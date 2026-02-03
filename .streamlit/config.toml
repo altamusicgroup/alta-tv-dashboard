@@ -1,0 +1,10 @@
+[theme]
+primaryColor = "#FFFFFF"  # White accent
+backgroundColor = "#000000"  # Pure black background
+secondaryBackgroundColor = "#1A1A1A"  # Slightly lighter black
+textColor = "#FFFFFF"  # White text
+font = "sans serif"
+
+[server]
+headless = true
+runOnSave = false
