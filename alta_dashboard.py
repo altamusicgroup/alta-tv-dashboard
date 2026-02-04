@@ -31,6 +31,10 @@ st.markdown(
         padding-bottom: 0rem !important;
         max-width: 100% !important;
         background-color: #000000 !important;
+
+        /* TV scaling */
+        transform: scale(0.88);
+        transform-origin: top center;
     }
 
     /* Apply Special Gothic font globally */
