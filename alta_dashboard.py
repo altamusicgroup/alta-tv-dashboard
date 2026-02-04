@@ -27,14 +27,18 @@ st.markdown(
 
     /* Full screen styling with black background */
     .block-container {
-        padding-top: 0.05rem !important;   /* tighter top padding for TV */
+        padding-top: 0.05rem !important;
         padding-bottom: 0rem !important;
         max-width: 100% !important;
         background-color: #000000 !important;
 
-        /* TV scaling */
-        transform: scale(0.60);
-        transform-origin: top center;
+        /* IMPORTANT: Remove scaling since it's not the issue anymore */
+        transform: none !important;
+    }
+
+    /* Force black background everywhere */
+    .stApp {
+        background-color: #000000 !important;
     }
 
     /* Apply Special Gothic font globally */
@@ -43,9 +47,18 @@ st.markdown(
         color: #FFFFFF !important;
     }
 
-    /* Force black background everywhere */
-    .stApp {
-        background-color: #000000 !important;
+    /* ===== TV HORIZONTAL FIXES ===== */
+
+    /* Remove Streamlit side gutters (reclaim width) */
+    section.main > div {
+        padding-left: 0.25rem !important;
+        padding-right: 0.25rem !important;
+    }
+
+    /* Tighten column spacing */
+    div[data-testid="column"] {
+        padding-left: 0.25rem !important;
+        padding-right: 0.25rem !important;
     }
 
     /* Remove extra spacing between consecutive markdown blocks */
@@ -64,19 +77,19 @@ st.markdown(
         justify-content: center;
         align-items: center;
         margin-top: 0 !important;
-        margin-bottom: -2.2rem !important;   /* tighter logo->title spacing */
+        margin-bottom: -2.2rem !important;
     }
 
     .logo-img {
         display: block;
-        transform: translateY(-18px);        /* pulls actual logo ink up */
+        transform: translateY(-18px);
     }
 
     /* Title styling */
     h1 {
-        font-size: 2.8rem !important;        /* smaller for TV */
+        font-size: 2.8rem !important;
         text-align: center !important;
-        margin-top: -0.6rem !important;      /* pull title up closer to logo */
+        margin-top: -0.6rem !important;
         margin-bottom: 0.2rem !important;
         font-weight: 700 !important;
         color: #FFFFFF !important;
@@ -91,7 +104,7 @@ st.markdown(
 
     /* Subtitle text */
     p {
-        font-size: 0.85rem !important;  /* slightly larger for TV */
+        font-size: 0.85rem !important;
         margin-top: 0 !important;
         margin-bottom: 0.25rem !important;
         text-align: center !important;
@@ -103,15 +116,18 @@ st.markdown(
         margin-bottom: 0.3rem !important;
     }
 
-    /* Custom metric cards with inline delta arrows (row 1 + row 2) */
+    /* Custom metric cards with inline delta arrows */
     .metric-card {
         background: #000000;
         text-align: center;
         padding: 0.15rem 0;
+
+        /* Prevent clipping of arrows/percents on TV browsers */
+        overflow: visible !important;
     }
 
     .metric-label {
-        font-size: 1.35rem !important;   /* smaller label */
+        font-size: 1.35rem !important;
         font-weight: 800;
         line-height: 1.1;
         opacity: 0.95;
@@ -120,14 +136,21 @@ st.markdown(
     .metric-value-row {
         display: inline-flex;
         align-items: baseline;
-        gap: 0.6rem !important;          /* tighter spacing */
         justify-content: center;
         margin-top: 0.15rem;
-        flex-wrap: nowrap;               /* keep arrow on same line */
+
+        /* keep arrow on same line */
+        flex-wrap: nowrap;
+
+        /* tighter spacing to avoid clipping */
+        gap: 0.45rem !important;
+
+        /* prevent clipping */
+        overflow: visible !important;
     }
 
     .metric-value {
-        font-size: 3.2rem !important;    /* smaller value */
+        font-size: 3.2rem !important;
         font-weight: 900;
         line-height: 1.05;
         white-space: nowrap;
@@ -136,9 +159,12 @@ st.markdown(
     .metric-delta-up,
     .metric-delta-down,
     .metric-delta-flat {
-        font-size: 1.4rem !important;    /* smaller delta */
+        font-size: 1.4rem !important;
         font-weight: 900;
         white-space: nowrap;
+
+        /* squeeze a few pixels back */
+        letter-spacing: -0.02em;
     }
 
     .metric-delta-up { color: #19C37D !important; }   /* green */
@@ -281,7 +307,6 @@ def get_overall_metrics():
     """
     df = pd.read_sql(query, conn)
     row = df.iloc[0]
-    # Normalize keys to lowercase so access is consistent
     return {str(k).lower(): row[k] for k in row.index}
 
 
@@ -309,7 +334,7 @@ def _pct_change(curr: float, prev: float) -> float:
     curr = float(curr or 0)
     prev = float(prev or 0)
     if prev == 0:
-        return 0.0 if curr == 0 else 1.0  # show +100% if prev=0 and curr>0
+        return 0.0 if curr == 0 else 1.0
     return (curr - prev) / prev
 
 
@@ -319,7 +344,6 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
 
     value_txt = f"{int(curr):,}" if is_int else f"{curr:.1f}"
 
-    # No delta mode (used for row 2)
     if (not show_delta) or (prev is None):
         st.markdown(
             f"""
@@ -368,7 +392,6 @@ if "refresh_counter" not in st.session_state:
 
 
 def main():
-    # Logo
     logo_path = "./components/ALTA-ICON-CIRCLE-(WHITE).png"
 
     if os.path.exists(logo_path):
@@ -384,10 +407,8 @@ def main():
             unsafe_allow_html=True
         )
 
-    # Title
     st.markdown("# ALTA MUSIC GROUP")
 
-    # Last updated time
     st.markdown(
         f"<p>Last 7 Days • Updated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>",
         unsafe_allow_html=True
@@ -397,7 +418,6 @@ def main():
         metrics = get_overall_metrics()
         artists = get_artist_leaderboard()
 
-        # Top metrics row (with arrows vs previous 7 days)
         st.markdown("<hr style='margin: 2.0rem 0;'>", unsafe_allow_html=True)
         col1, col2, col3, col4 = st.columns(4)
 
@@ -410,25 +430,15 @@ def main():
         with col4:
             render_metric_card("TikTok Creations", metrics["curr_total_tiktok_creations"], metrics["prev_total_tiktok_creations"], is_int=True, show_delta=True)
 
-        # ---------------- Second row (2 metrics, centered) ----------------
+        # Second row (2 metrics, centered)
         st.markdown("<hr style='margin: 2.0rem 0;'>", unsafe_allow_html=True)
-
         col_l, c1, c2, col_r = st.columns([1, 2, 2, 1])
 
         with c1:
-            render_metric_card(
-                "Active Artists",
-                metrics["curr_total_artists"],
-                show_delta=False
-            )
+            render_metric_card("Active Artists", metrics["curr_total_artists"], show_delta=False)
 
         with c2:
-            render_metric_card(
-                "Active Tracks",
-                metrics["curr_total_tracks"],
-                show_delta=False
-            )
-
+            render_metric_card("Active Tracks", metrics["curr_total_tracks"], show_delta=False)
 
         # Artist leaderboard (unchanged)
         st.markdown("<hr style='margin: 0.5rem 0;'>", unsafe_allow_html=True)
@@ -521,8 +531,7 @@ def main():
         st.error(f"Error loading data: {e}")
         st.info("Please check your Snowflake connection settings.")
 
-    # Auto-refresh mechanism
-    time.sleep(300)  # Wait 5 minutes
+    time.sleep(300)
     st.session_state.refresh_counter += 1
     st.rerun()
 
