@@ -266,34 +266,76 @@ def get_snowflake_connection():
 def get_overall_metrics():
     conn = get_snowflake_connection()
     query = """
-    WITH base AS (
-      SELECT
-        activity_date,
-        total_streams,
-        total_listeners,
-        artist_name,
-        isrc,
-        tiktok_views,
-        tiktok_creations
-      FROM ANALYTICS_PROD.STREAMING.TRACK_DAILY_PERFORMANCE_VW
-      WHERE activity_date >= DATEADD(day, -13, CURRENT_DATE())
-        AND activity_date <= CURRENT_DATE()
-    )
-    SELECT
-      SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN total_streams ELSE 0 END)        AS curr_total_streams,
-      SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN total_listeners ELSE 0 END)      AS curr_total_listeners,
-      COUNT(DISTINCT CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN artist_name END)      AS curr_total_artists,
-      COUNT(DISTINCT CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN isrc END)            AS curr_total_tracks,
-      SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN tiktok_views ELSE 0 END)        AS curr_total_tiktok_views,
-      SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN tiktok_creations ELSE 0 END)    AS curr_total_tiktok_creations,
+    WITH
 
-      SUM(CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN total_streams ELSE 0 END)         AS prev_total_streams,
-      SUM(CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN total_listeners ELSE 0 END)       AS prev_total_listeners,
-      COUNT(DISTINCT CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN artist_name END)       AS prev_total_artists,
-      COUNT(DISTINCT CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN isrc END)             AS prev_total_tracks,
-      SUM(CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN tiktok_views ELSE 0 END)          AS prev_total_tiktok_views,
-      SUM(CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN tiktok_creations ELSE 0 END)      AS prev_total_tiktok_creations
-    FROM base;
+    max_date AS (
+    SELECT
+    MAX(activity_date) as max_date
+    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
+
+    )
+
+    ,streams AS (
+    SELECT
+    activity_date,
+    artist_name,
+    artist_id,
+    SUM(streams) as total_streams,
+    SUM(listeners) as total_listeners
+
+    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
+        WHERE activity_date >= DATEADD(day, -13, (SELECT(max_date.max_date) FROM max_date) )
+            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
+
+    GROUP BY ALL
+
+    )
+
+    ,tiktok AS (
+    SELECT
+    activity_date,
+    artist_name,
+    artist_id,
+    COUNT(distinct ISRC) as isrc_numbers,
+    SUM(video_views) as tiktok_views,
+    SUM(creations) as tiktok_creations
+
+    FROM STAGE_PROD.SOCIALS.ORCHARD_TIKTOK_DAILY
+        WHERE activity_date >= DATEADD(day, -13,(SELECT(max_date.max_date) FROM max_date))
+            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
+
+    GROUP BY ALL
+
+    )
+
+    ,base AS (
+        SELECT
+            activity_date,
+            artist_name,
+            isrc_numbers,
+            total_streams,
+            total_listeners,
+            tiktok_views,
+            tiktok_creations
+        FROM streams
+        LEFT JOIN tiktok USING(activity_date,artist_id)
+        )
+        
+        SELECT
+        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_streams ELSE 0 END)        AS curr_total_streams,
+        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_listeners ELSE 0 END)      AS curr_total_listeners,
+        COUNT(DISTINCT CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN artist_name END)      AS curr_total_artists,
+        SUM(DISTINCT CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN isrc_numbers END)     AS curr_total_tracks,
+        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_views ELSE 0 END)        AS curr_total_tiktok_views,
+        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_creations ELSE 0 END)    AS curr_total_tiktok_creations,
+
+        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_streams ELSE 0 END)         AS prev_total_streams,
+        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_listeners ELSE 0 END)       AS prev_total_listeners,
+        COUNT(DISTINCT CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN artist_name END)       AS prev_total_artists,
+        SUM(DISTINCT CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN isrc_numbers END)      AS prev_total_tracks,
+        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_views ELSE 0 END)          AS prev_total_tiktok_views,
+        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_creations ELSE 0 END)      AS prev_total_tiktok_creations
+        FROM base;
     """
     df = pd.read_sql(query, conn)
     row = df.iloc[0]
@@ -304,15 +346,69 @@ def get_overall_metrics():
 def get_artist_leaderboard():
     conn = get_snowflake_connection()
     query = """
-    SELECT 
-        artist_name,
-        SUM(total_streams) as streams,
-        SUM(tiktok_views) as tiktok_views
-    FROM ANALYTICS_PROD.STREAMING.ARTIST_DAILY_PERFORMANCE_VW
-    WHERE activity_date >= CURRENT_DATE() - 7
-    GROUP BY artist_name
-    ORDER BY streams DESC
-    LIMIT 10
+    WITH
+
+    max_date AS (
+    SELECT
+    MAX(activity_date) as max_date
+    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
+
+    )
+
+    ,streams AS (
+    SELECT
+    activity_date,
+    artist_name,
+    artist_id,
+    SUM(streams) as total_streams,
+    SUM(listeners) as total_listeners
+
+    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
+        WHERE activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date) )
+            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
+
+    GROUP BY ALL
+
+    )
+
+    ,tiktok AS (
+    SELECT
+    activity_date,
+    artist_name,
+    artist_id,
+    COUNT(distinct ISRC) as isrc_numbers,
+    SUM(video_views) as tiktok_views,
+    SUM(creations) as tiktok_creations
+
+    FROM STAGE_PROD.SOCIALS.ORCHARD_TIKTOK_DAILY
+        WHERE activity_date >= DATEADD(day, -6,(SELECT(max_date.max_date) FROM max_date))
+            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
+
+    GROUP BY ALL
+
+    )
+
+    ,base AS (
+        SELECT
+            activity_date,
+            artist_name,
+            isrc_numbers,
+            total_streams,
+            total_listeners,
+            tiktok_views,
+            tiktok_creations
+        FROM streams
+        LEFT JOIN tiktok USING(activity_date,artist_id)
+        )
+        
+        SELECT 
+            artist_name,
+            SUM(total_streams) as streams,
+            SUM(tiktok_views) as tiktok_views
+        FROM  base
+        GROUP BY artist_name
+        ORDER BY streams DESC
+        LIMIT 10
     """
     return pd.read_sql(query, conn)
 
