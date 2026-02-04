@@ -118,21 +118,6 @@ st.markdown(
     }
 
     /* Custom metric cards with inline delta arrows */
-    .metric-card {
-        background: #000000;
-        text-align: center;
-        padding: 0.15rem 0;
-
-        /* Prevent clipping of arrows/percents on TV browsers */
-        overflow: visible !important;
-    }
-
-    .metric-label {
-        font-size: 1.35rem !important;
-        font-weight: 800;
-        line-height: 1.1;
-        opacity: 0.95;
-    }
 
     .metric-card {
     background: #000000;
@@ -160,33 +145,12 @@ st.markdown(
         font-size: 1.5rem !important;
         font-weight: 900;
         white-space: nowrap;
+        letter-spacing: -0.02em;
     }
 
     .metric-delta-up { color: #19C37D !important; }
     .metric-delta-down { color: #FF4D4D !important; }
     .metric-delta-flat { color: #AAAAAA !important; }
-
-    .metric-value {
-        font-size: 3.2rem !important;
-        font-weight: 900;
-        line-height: 1.05;
-        white-space: nowrap;
-    }
-
-    .metric-delta-up,
-    .metric-delta-down,
-    .metric-delta-flat {
-        font-size: 1.4rem !important;
-        font-weight: 900;
-        white-space: nowrap;
-
-        /* squeeze a few pixels back */
-        letter-spacing: -0.02em;
-    }
-
-    .metric-delta-up { color: #19C37D !important; }   /* green */
-    .metric-delta-down { color: #FF4D4D !important; } /* red */
-    .metric-delta-flat { color: #AAAAAA !important; } /* neutral */
 
     /* Info boxes */
     .stAlert {
@@ -361,20 +325,22 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
 
     value_txt = f"{int(curr):,}" if is_int else f"{curr:.1f}"
 
+    # NO-DELTA mode (row 2) OR no previous value passed
     if (not show_delta) or (prev is None):
         st.markdown(
             f"""
             <div class="metric-card">
-            <div class="metric-label">{label}</div>
-            <div class="metric-value">{value_txt}</div>
-            <div class="metric-delta {cls}">{arrow} {pct_txt}</div>
+              <div class="metric-label">{label}</div>
+              <div class="metric-value">{value_txt}</div>
             </div>
             """,
             unsafe_allow_html=True
         )
         return
 
+    # DELTA mode (row 1)
     pct = _pct_change(curr, prev)
+
     if curr > prev:
         arrow = "▲"
         cls = "metric-delta-up"
@@ -392,14 +358,13 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
         f"""
         <div class="metric-card">
           <div class="metric-label">{label}</div>
-          <div class="metric-value-row">
-            <div class="metric-value">{value_txt}</div>
-            <div class="{cls}">{arrow} {pct_txt}</div>
-          </div>
+          <div class="metric-value">{value_txt}</div>
+          <div class="metric-delta {cls}">{arrow} {pct_txt}</div>
         </div>
         """,
         unsafe_allow_html=True
     )
+
 
 
 # Auto-refresh
