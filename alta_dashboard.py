@@ -2,9 +2,12 @@ import streamlit as st
 import snowflake.connector
 import pandas as pd
 from datetime import datetime
-import time
 import os
 import base64
+
+# NEW: safe autorefresh (no sleep/rerun loops)
+from streamlit_autorefresh import st_autorefresh
+
 
 # Page config - must be first Streamlit command
 st.set_page_config(
@@ -13,19 +16,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for TV display
+# --------------------------- CSS ---------------------------
 st.markdown(
     """
 <style>
-    /* Import Special Gothic font */
     @import url('https://fonts.cdnfonts.com/css/special-gothic');
 
-    /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    /* Full screen styling with black background */
     .block-container {
         padding-top: 0.05rem !important;
         padding-bottom: 0rem !important;
@@ -35,34 +35,25 @@ st.markdown(
         /* TV fit (light) */
         transform: scale(0.75) !important;
         transform-origin: top center !important;
-        }
-
-    /* Force black background everywhere */
-    .stApp {
-        background-color: #000000 !important;
     }
 
-    /* Apply Special Gothic font globally */
+    .stApp { background-color: #000000 !important; }
+
     * {
         font-family: 'Special Gothic', sans-serif !important;
         color: #FFFFFF !important;
     }
 
-    /* ===== TV HORIZONTAL FIXES ===== */
-
-    /* Remove Streamlit side gutters (reclaim width) */
     section.main > div {
         padding-left: 0.25rem !important;
         padding-right: 0.25rem !important;
     }
 
-    /* Tighten column spacing */
     div[data-testid="column"] {
         padding-left: 0.25rem !important;
         padding-right: 0.25rem !important;
     }
 
-    /* Remove extra spacing between consecutive markdown blocks */
     div[data-testid="stMarkdown"] {
         margin-bottom: 0 !important;
         padding-bottom: 0 !important;
@@ -72,7 +63,6 @@ st.markdown(
         padding-top: 0 !important;
     }
 
-    /* Logo spacing control (handles transparent padding inside the PNG) */
     .logo-wrap {
         display: flex;
         justify-content: center;
@@ -86,24 +76,14 @@ st.markdown(
         transform: translateY(-18px);
     }
 
-    /* Title styling */
     h1 {
         font-size: 2.8rem !important;
         text-align: center !important;
         margin-top: -0.6rem !important;
         margin-bottom: 0.2rem !important;
         font-weight: 700 !important;
-        color: #FFFFFF !important;
     }
 
-    h2 {
-        font-size: 1.6rem !important;
-        margin-top: 0.8rem !important;
-        margin-bottom: 0.5rem !important;
-        color: #FFFFFF !important;
-    }
-
-    /* Subtitle text */
     p {
         font-size: 0.85rem !important;
         margin-top: 0 !important;
@@ -111,19 +91,17 @@ st.markdown(
         text-align: center !important;
     }
 
-    /* Minimal spacing between sections */
     hr {
         margin-top: 0.3rem !important;
         margin-bottom: 0.3rem !important;
     }
 
-    /* Custom metric cards with inline delta arrows */
-
+    /* Metric cards (delta below number; TV safe) */
     .metric-card {
-    background: #000000;
-    text-align: center;
-    padding: 0.15rem 0;
-    overflow: visible !important;
+        background: #000000;
+        text-align: center;
+        padding: 0.15rem 0;
+        overflow: visible !important;
     }
 
     .metric-label {
@@ -152,7 +130,6 @@ st.markdown(
     .metric-delta-down { color: #FF4D4D !important; }
     .metric-delta-flat { color: #AAAAAA !important; }
 
-    /* Info boxes */
     .stAlert {
         background-color: #1A1A1A !important;
         color: #FFFFFF !important;
@@ -162,41 +139,63 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Password protection
-def check_password():
-    """Returns True if the user had the correct password."""
+# --------------------------- Auth ---------------------------
+def is_tv_token_valid() -> bool:
+    """
+    OPTIONAL: If you set st.secrets["tv_token"], then opening
+    https://yourapp.streamlit.app/?token=YOUR_TOKEN
+    will bypass password permanently (even after hard reload).
+    """
+    tv_token_secret = st.secrets.get("tv_token", "")
+    if not tv_token_secret:
+        return False
+    token = st.query_params.get("token", "")
+    return token == tv_token_secret
 
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == st.secrets.get("dashboard_password", "alta2024"):
+
+def check_password():
+    """Return True if user is authenticated. Persist auth across reruns."""
+    # Optional token bypass
+    if is_tv_token_valid():
+        st.session_state["password_correct"] = True
+        return True
+
+    correct_pw = st.secrets.get("dashboard_password", "alta2024")
+
+    # If already authenticated, don't ask again
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.markdown("## ALTA MUSIC GROUP Dashboard")
+
+    # Use a form so it only evaluates on submit (more stable on TVs)
+    with st.form("password_form", clear_on_submit=True):
+        pwd = st.text_input("Enter Password", type="password", key="password_input")
+        submitted = st.form_submit_button("Enter")
+
+    if submitted:
+        if pwd == correct_pw:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password
+            return True
         else:
             st.session_state["password_correct"] = False
+            st.error("Password incorrect")
+            return False
 
-    if "password_correct" not in st.session_state:
-        st.markdown("## ALTA MUSIC GROUP Dashboard")
-        st.text_input("Enter Password", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.markdown("## ALTA MUSIC GROUP Dashboard")
-        st.text_input("Enter Password", type="password", on_change=password_entered, key="password")
-        st.error("Password incorrect")
-        return False
-    else:
-        return True
+    return False
 
 
 if not check_password():
     st.stop()
 
+# NEW: clean auto-refresh every 5 minutes (no blocking thread)
+st_autorefresh(interval=300_000, key="tv_refresh")
 
-# Snowflake connection
+# --------------------------- Snowflake ---------------------------
 @st.cache_resource
 def get_snowflake_connection():
     """Create Snowflake connection using Streamlit secrets"""
     try:
-        # Key-pair auth (2FA accounts)
         if "private_key" in st.secrets["snowflake"]:
             from cryptography.hazmat.backends import default_backend
             from cryptography.hazmat.primitives import serialization
@@ -228,7 +227,6 @@ def get_snowflake_connection():
                 private_key=pkb
             )
         else:
-            # Password auth
             conn = snowflake.connector.connect(
                 user=st.secrets["snowflake"]["user"],
                 password=st.secrets["snowflake"]["password"],
@@ -245,14 +243,9 @@ def get_snowflake_connection():
         st.stop()
 
 
-# Query functions
+# --------------------------- Queries ---------------------------
 @st.cache_data(ttl=300)
 def get_overall_metrics():
-    """
-    Returns current 7-day window and previous 7-day window metrics.
-      - current: [today-6, today] inclusive
-      - previous: [today-13, today-7] inclusive
-    """
     conn = get_snowflake_connection()
     query = """
     WITH base AS (
@@ -269,7 +262,6 @@ def get_overall_metrics():
         AND activity_date <= CURRENT_DATE()
     )
     SELECT
-      /* Current 7 days */
       SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN total_streams ELSE 0 END)        AS curr_total_streams,
       SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN total_listeners ELSE 0 END)      AS curr_total_listeners,
       COUNT(DISTINCT CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN artist_name END)      AS curr_total_artists,
@@ -277,7 +269,6 @@ def get_overall_metrics():
       SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN tiktok_views ELSE 0 END)        AS curr_total_tiktok_views,
       SUM(CASE WHEN activity_date >= DATEADD(day, -6, CURRENT_DATE()) THEN tiktok_creations ELSE 0 END)    AS curr_total_tiktok_creations,
 
-      /* Previous 7 days */
       SUM(CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN total_streams ELSE 0 END)         AS prev_total_streams,
       SUM(CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN total_listeners ELSE 0 END)       AS prev_total_listeners,
       COUNT(DISTINCT CASE WHEN activity_date < DATEADD(day, -6, CURRENT_DATE()) THEN artist_name END)       AS prev_total_artists,
@@ -293,7 +284,6 @@ def get_overall_metrics():
 
 @st.cache_data(ttl=300)
 def get_artist_leaderboard():
-    """Get top 10 artists by streams for last 7 days"""
     conn = get_snowflake_connection()
     query = """
     SELECT 
@@ -306,11 +296,10 @@ def get_artist_leaderboard():
     ORDER BY streams DESC
     LIMIT 10
     """
-    df = pd.read_sql(query, conn)
-    return df
+    return pd.read_sql(query, conn)
 
 
-# Arrow helpers
+# --------------------------- Metrics rendering ---------------------------
 def _pct_change(curr: float, prev: float) -> float:
     curr = float(curr or 0)
     prev = float(prev or 0)
@@ -325,7 +314,6 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
 
     value_txt = f"{int(curr):,}" if is_int else f"{curr:.1f}"
 
-    # NO-DELTA mode (row 2) OR no previous value passed
     if (not show_delta) or (prev is None):
         st.markdown(
             f"""
@@ -338,7 +326,6 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
         )
         return
 
-    # DELTA mode (row 1)
     pct = _pct_change(curr, prev)
 
     if curr > prev:
@@ -366,12 +353,7 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
     )
 
 
-
-# Auto-refresh
-if "refresh_counter" not in st.session_state:
-    st.session_state.refresh_counter = 0
-
-
+# --------------------------- Main ---------------------------
 def main():
     logo_path = "./components/ALTA-ICON-CIRCLE-(WHITE).png"
 
@@ -389,7 +371,6 @@ def main():
         )
 
     st.markdown("# ALTA MUSIC GROUP")
-
     st.markdown(
         f"<p>Last 7 Days • Updated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>",
         unsafe_allow_html=True
@@ -411,13 +392,11 @@ def main():
         with col4:
             render_metric_card("TikTok Creations", metrics["curr_total_tiktok_creations"], metrics["prev_total_tiktok_creations"], is_int=True, show_delta=True)
 
-        # Second row (2 metrics, centered)
         st.markdown("<hr style='margin: 2.0rem 0;'>", unsafe_allow_html=True)
         col_l, c1, c2, col_r = st.columns([1, 2, 2, 1])
 
         with c1:
             render_metric_card("Active Artists", metrics["curr_total_artists"], show_delta=False)
-
         with c2:
             render_metric_card("Active Tracks", metrics["curr_total_tracks"], show_delta=False)
 
@@ -482,7 +461,6 @@ def main():
         </thead>
         <tbody>
         """
-
         for idx in range(min(10, len(artists))):
             row = artists.iloc[idx]
             html_content += f"""
@@ -511,10 +489,6 @@ def main():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         st.info("Please check your Snowflake connection settings.")
-
-    time.sleep(300)
-    st.session_state.refresh_counter += 1
-    st.rerun()
 
 
 if __name__ == "__main__":
