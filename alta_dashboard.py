@@ -403,8 +403,8 @@ def get_artist_leaderboard():
         
         SELECT 
             artist_name,
-            SUM(total_streams) as streams,
-            SUM(tiktok_views) as tiktok_views
+            COALESCE(SUM(total_streams), 0) as streams, as streams,
+            COALESCE(SUM(tiktok_views), 0) as tiktok_views
         FROM  base
         GROUP BY artist_name
         ORDER BY streams DESC
