@@ -33,7 +33,7 @@ st.markdown(
         background-color: #000000 !important;
 
         /* TV scaling */
-        transform: scale(0.88);
+        transform: scale(0.80);
         transform-origin: top center;
     }
 
