@@ -32,9 +32,10 @@ st.markdown(
         max-width: 100% !important;
         background-color: #000000 !important;
 
-        /* IMPORTANT: Remove scaling since it's not the issue anymore */
-        transform: none !important;
-    }
+        /* TV fit (light) */
+        transform: scale(0.75) !important;
+        transform-origin: top center !important;
+        }
 
     /* Force black background everywhere */
     .stApp {
@@ -133,21 +134,37 @@ st.markdown(
         opacity: 0.95;
     }
 
-    .metric-value-row {
-        display: inline-flex;
-        align-items: baseline;
-        justify-content: center;
-        margin-top: 0.15rem;
-
-        /* keep arrow on same line */
-        flex-wrap: nowrap;
-
-        /* tighter spacing to avoid clipping */
-        gap: 0.45rem !important;
-
-        /* prevent clipping */
-        overflow: visible !important;
+    .metric-card {
+    background: #000000;
+    text-align: center;
+    padding: 0.15rem 0;
+    overflow: visible !important;
     }
+
+    .metric-label {
+        font-size: 1.35rem !important;
+        font-weight: 800;
+        line-height: 1.1;
+        opacity: 0.95;
+    }
+
+    .metric-value {
+        font-size: 3.2rem !important;
+        font-weight: 900;
+        line-height: 1.05;
+        white-space: nowrap;
+    }
+
+    .metric-delta {
+        margin-top: 0.15rem;
+        font-size: 1.5rem !important;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+
+    .metric-delta-up { color: #19C37D !important; }
+    .metric-delta-down { color: #FF4D4D !important; }
+    .metric-delta-flat { color: #AAAAAA !important; }
 
     .metric-value {
         font-size: 3.2rem !important;
@@ -348,10 +365,9 @@ def render_metric_card(label: str, curr_value, prev_value=None, is_int=True, sho
         st.markdown(
             f"""
             <div class="metric-card">
-              <div class="metric-label">{label}</div>
-              <div class="metric-value-row">
-                <div class="metric-value">{value_txt}</div>
-              </div>
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value_txt}</div>
+            <div class="metric-delta {cls}">{arrow} {pct_txt}</div>
             </div>
             """,
             unsafe_allow_html=True
