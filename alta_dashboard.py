@@ -153,36 +153,54 @@ def is_tv_token_valid() -> bool:
     return token == tv_token_secret
 
 
-def check_password():
-    """Return True if user is authenticated. Persist auth across reruns."""
-    # Optional token bypass
-    if is_tv_token_valid():
-        st.session_state["password_correct"] = True
-        return True
+def check_password() -> bool:
+    """
+    Auth options:
+      A) URL token: ?token=... matches st.secrets["tv_token"]  -> auto-auth
+      B) Password form: matches st.secrets["dashboard_password"]
+    Persists across reruns via st.session_state["password_correct"].
+    """
 
-    correct_pw = st.secrets.get("dashboard_password", "alta2024")
-
-    # If already authenticated, don't ask again
+    # Already authenticated in this session
     if st.session_state.get("password_correct", False):
         return True
 
+    # --- Token bypass (for TV) ---
+    tv_token = st.secrets.get("tv_token", None)
+    try:
+        # Streamlit >= 1.27
+        token_in_url = st.query_params.get("token", None)
+        # st.query_params may return list-like in some contexts
+        if isinstance(token_in_url, list):
+            token_in_url = token_in_url[0] if token_in_url else None
+    except Exception:
+        # Fallback for older Streamlit
+        token_in_url = st.experimental_get_query_params().get("token", [None])[0]
+
+    if tv_token and token_in_url and token_in_url == tv_token:
+        st.session_state["password_correct"] = True
+        # Force clean rerun so the password UI never shows
+        st.rerun()
+
+    # --- Password form (only rendered when NOT authed) ---
     st.markdown("## ALTA MUSIC GROUP Dashboard")
 
-    # Use a form so it only evaluates on submit (more stable on TVs)
     with st.form("password_form", clear_on_submit=True):
-        pwd = st.text_input("Enter Password", type="password", key="password_input")
+        pwd = st.text_input("Enter Password", type="password")
         submitted = st.form_submit_button("Enter")
 
     if submitted:
+        correct_pw = st.secrets.get("dashboard_password", "alta2024")
         if pwd == correct_pw:
             st.session_state["password_correct"] = True
-            return True
+            # Clean rerun removes the form from the page
+            st.rerun()
         else:
             st.session_state["password_correct"] = False
             st.error("Password incorrect")
-            return False
 
     return False
+
 
 
 if not check_password():
