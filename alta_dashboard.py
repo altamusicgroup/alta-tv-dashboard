@@ -210,7 +210,7 @@ if not check_password():
 st_autorefresh(interval=300_000, key="tv_refresh")
 
 # --------------------------- Snowflake ---------------------------
-@st.cache_resource
+@st.cache_resource(ttl=3600)  # Refresh connection every hour to prevent token expiration
 def get_snowflake_connection():
     """Create Snowflake connection using Streamlit secrets"""
     try:
@@ -261,10 +261,33 @@ def get_snowflake_connection():
         st.stop()
 
 
+# Helper function to execute queries with auto-reconnect on auth failure
+def execute_query(query):
+    """Execute query with automatic reconnection on auth failure"""
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            conn = get_snowflake_connection()
+            df = pd.read_sql(query, conn)
+            return df
+        except Exception as e:
+            error_msg = str(e)
+            # Check if it's an auth error
+            if "authentication token has expired" in error_msg.lower() or "08001" in error_msg:
+                if attempt < max_retries - 1:
+                    # Clear the cached connection and retry
+                    get_snowflake_connection.clear()
+                    continue
+                else:
+                    raise Exception(f"Authentication failed after {max_retries} attempts: {e}")
+            else:
+                # Not an auth error, raise immediately
+                raise e
+
+
 # --------------------------- Queries ---------------------------
 @st.cache_data(ttl=300)
 def get_overall_metrics():
-    conn = get_snowflake_connection()
     query = """
     WITH
 
@@ -347,14 +370,13 @@ def get_overall_metrics():
         SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_creations ELSE 0 END)      AS prev_total_tiktok_creations
         FROM base;
     """
-    df = pd.read_sql(query, conn)
+    df = execute_query(query)
     row = df.iloc[0]
     return {str(k).lower(): row[k] for k in row.index}
 
 
 @st.cache_data(ttl=300)
 def get_artist_leaderboard():
-    conn = get_snowflake_connection()
     query = """
     WITH
 
@@ -420,7 +442,7 @@ def get_artist_leaderboard():
         ORDER BY streams DESC
         LIMIT 10
     """
-    return pd.read_sql(query, conn)
+    return execute_query(query)
 
 
 # --------------------------- Metrics rendering ---------------------------
