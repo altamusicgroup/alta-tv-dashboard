@@ -206,8 +206,8 @@ def check_password() -> bool:
 if not check_password():
     st.stop()
 
-# NEW: clean auto-refresh every 5 minutes (no blocking thread)
-st_autorefresh(interval=300_000, key="tv_refresh")
+# Auto-refresh every hour (data only changes once daily after dbt run)
+st_autorefresh(interval=3_600_000, key="tv_refresh")
 
 # --------------------------- Snowflake ---------------------------
 @st.cache_resource(ttl=3600)  # Refresh connection every hour to prevent token expiration
@@ -286,162 +286,17 @@ def execute_query(query):
 
 
 # --------------------------- Queries ---------------------------
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=43200)
 def get_overall_metrics():
-    query = """
-    WITH
-
-    max_date AS (
-    SELECT
-    MAX(activity_date) as max_date
-    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
-
-    )
-
-    ,tracks AS (
-    SELECT
-    (SELECT(max_date.max_date) FROM max_date) as activity_date,
-    COUNT(DISTINCT CONCAT(artist_name,track_name)) as number_of_tracks
-    FROM STAGE_PROD.METADATA.ORCHARD_METADATA_DAILY
-    WHERE FILE_DATE = (SELECT MAX(FILE_DATE) FROM STAGE_PROD.METADATA.ORCHARD_METADATA_DAILY)
-    GROUP BY 1
-    )
-
-    ,streams AS (
-    SELECT
-    activity_date,
-    artist_name,
-    artist_id,
-    SUM(streams) as total_streams,
-    SUM(listeners) as total_listeners
-
-    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
-        WHERE activity_date >= DATEADD(day, -13, (SELECT(max_date.max_date) FROM max_date) )
-            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
-
-    GROUP BY ALL
-
-    )
-
-    ,tiktok AS (
-    SELECT
-    activity_date,
-    artist_name,
-    artist_id,
-    COUNT(distinct ISRC) as isrc_numbers,
-    SUM(video_views) as tiktok_views,
-    SUM(creations) as tiktok_creations
-
-    FROM STAGE_PROD.SOCIALS.ORCHARD_TIKTOK_DAILY
-        WHERE activity_date >= DATEADD(day, -13,(SELECT(max_date.max_date) FROM max_date))
-            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
-
-    GROUP BY ALL
-
-    )
-
-    ,base AS (
-        SELECT
-            activity_date,
-            artist_name,
-            total_streams,
-            total_listeners,
-            tiktok_views,
-            tiktok_creations,
-            number_of_tracks
-        FROM streams
-        LEFT JOIN tiktok USING(activity_date,artist_id)
-        LEFT JOIN tracks USING(activity_date)
-        )
-        
-        SELECT
-        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_streams ELSE 0 END)        AS curr_total_streams,
-        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_listeners ELSE 0 END)      AS curr_total_listeners,
-        COUNT(DISTINCT CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN artist_name END)      AS curr_total_artists,
-        MAX(number_of_tracks)     AS curr_total_tracks,
-        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_views ELSE 0 END)        AS curr_total_tiktok_views,
-        SUM(CASE WHEN activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_creations ELSE 0 END)    AS curr_total_tiktok_creations,
-
-        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_streams ELSE 0 END)         AS prev_total_streams,
-        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN total_listeners ELSE 0 END)       AS prev_total_listeners,
-        COUNT(DISTINCT CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN artist_name END)       AS prev_total_artists,
-        MAX(number_of_tracks)     AS  prev_total_tracks,
-        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_views ELSE 0 END)          AS prev_total_tiktok_views,
-        SUM(CASE WHEN activity_date < DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date)) THEN tiktok_creations ELSE 0 END)      AS prev_total_tiktok_creations
-        FROM base;
-    """
+    query = "SELECT * FROM ANALYTICS_PROD.DASHBOARD.DASHBOARD_TV_KPIS"
     df = execute_query(query)
     row = df.iloc[0]
     return {str(k).lower(): row[k] for k in row.index}
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=43200)
 def get_artist_leaderboard():
-    query = """
-    WITH
-
-    max_date AS (
-    SELECT
-    MAX(activity_date) as max_date
-    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
-
-    )
-
-    ,streams AS (
-    SELECT
-    activity_date,
-    artist_name,
-    artist_id,
-    SUM(streams) as total_streams,
-    SUM(listeners) as total_listeners
-
-    FROM STAGE_PROD.STREAMING.ORCHARD_TRACK_ARTIST_DAILY
-        WHERE activity_date >= DATEADD(day, -6, (SELECT(max_date.max_date) FROM max_date) )
-            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
-
-    GROUP BY ALL
-
-    )
-
-    ,tiktok AS (
-    SELECT
-    activity_date,
-    artist_name,
-    artist_id,
-    COUNT(distinct ISRC) as isrc_numbers,
-    SUM(video_views) as tiktok_views,
-    SUM(creations) as tiktok_creations
-
-    FROM STAGE_PROD.SOCIALS.ORCHARD_TIKTOK_DAILY
-        WHERE activity_date >= DATEADD(day, -6,(SELECT(max_date.max_date) FROM max_date))
-            AND activity_date <= (SELECT(max_date.max_date) FROM max_date)
-
-    GROUP BY ALL
-
-    )
-
-    ,base AS (
-        SELECT
-            activity_date,
-            artist_name,
-            isrc_numbers,
-            total_streams,
-            total_listeners,
-            tiktok_views,
-            tiktok_creations
-        FROM streams
-        LEFT JOIN tiktok USING(activity_date,artist_id)
-        )
-        
-        SELECT 
-            artist_name,
-            COALESCE(SUM(total_streams), 0) as streams,
-            COALESCE(SUM(tiktok_views), 0) as tiktok_views
-        FROM  base
-        GROUP BY artist_name
-        ORDER BY streams DESC
-        LIMIT 10
-    """
+    query = "SELECT * FROM ANALYTICS_PROD.DASHBOARD.DASHBOARD_TV_LEADERBOARD"
     return execute_query(query)
 
 
@@ -628,7 +483,7 @@ def main():
         components.html(html_content, height=450, scrolling=False)
 
         st.markdown(
-            "<p style='margin-top: 0.5rem !important;'>Dashboard auto-refreshes every 5 minutes</p>",
+            "<p style='margin-top: 0.5rem !important;'>Dashboard auto-refreshes every hour • Data updates daily</p>",
             unsafe_allow_html=True
         )
 
