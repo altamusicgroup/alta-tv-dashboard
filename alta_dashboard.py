@@ -207,7 +207,13 @@ if not check_password():
     st.stop()
 
 # Auto-refresh every hour (data only changes once daily after dbt run)
+# st_autorefresh handles JS-based reruns; meta refresh is a hard browser-level
+# fallback in case the JS timer gets suspended (common on TV/idle displays)
 st_autorefresh(interval=3_600_000, key="tv_refresh")
+st.markdown(
+    '<meta http-equiv="refresh" content="3600">',
+    unsafe_allow_html=True
+)
 
 # --------------------------- Snowflake ---------------------------
 @st.cache_resource(ttl=3600)  # Refresh connection every hour to prevent token expiration
