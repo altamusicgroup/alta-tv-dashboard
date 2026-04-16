@@ -286,7 +286,7 @@ def execute_query(query):
 
 
 # --------------------------- Queries ---------------------------
-@st.cache_data(ttl=43200)
+@st.cache_data(ttl=14400)
 def get_overall_metrics():
     query = "SELECT * FROM ANALYTICS_PROD.DASHBOARD.DASHBOARD_TV_KPIS"
     df = execute_query(query)
@@ -294,7 +294,7 @@ def get_overall_metrics():
     return {str(k).lower(): row[k] for k in row.index}
 
 
-@st.cache_data(ttl=43200)
+@st.cache_data(ttl=14400)
 def get_artist_leaderboard():
     query = "SELECT * FROM ANALYTICS_PROD.DASHBOARD.DASHBOARD_TV_LEADERBOARD"
     return execute_query(query)
